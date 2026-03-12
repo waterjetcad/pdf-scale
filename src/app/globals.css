@@ -1,0 +1,545 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ===== PDF Viewer Container ===== */
+.pdf-viewer-layout {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: white;
+}
+
+/* Sidebar */
+.measurements-sidebar {
+  width: 320px;
+  min-width: 320px;
+  border-right: 1px solid #E5E7EB;
+  background: #F9FAFB;
+  z-index: 10;
+}
+
+/* Main Content Area */
+.pdf-viewer-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+/* Custom Webkit Scrollbar for Sidebar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #D1D5DB;
+  border-radius: 10px;
+}
+
+.pdf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  padding: 8px 16px;
+  border-bottom: 1px solid #E5E7EB;
+  z-index: 5;
+}
+
+.pdf-toolbar-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  background: #F8FAFC;
+  padding: 6px 16px;
+  border-bottom: 1px solid #E5E7EB;
+  z-index: 4;
+}
+
+.toolbar-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-section-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.toolbar-section-right {
+  margin-left: auto;
+}
+
+.toolbar-file-input {
+  max-width: 240px;
+}
+
+/* ===== Scale Calibration Panel ===== */
+.scale-calibration-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scale-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #EFF6FF, #DBEAFE);
+  border: 1px solid #BFDBFE;
+  border-radius: 8px;
+  padding: 6px 12px;
+  transition: all 0.2s;
+}
+
+.scale-badge:hover {
+  border-color: #93C5FD;
+}
+
+.scale-badge-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: #3B82F6;
+  border-radius: 6px;
+  color: white;
+}
+
+.scale-badge-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.scale-badge-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6B7280;
+}
+
+.scale-badge-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1E40AF;
+}
+
+.scale-badge-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #9CA3AF;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.scale-badge-reset:hover {
+  background: #FEE2E2;
+  color: #EF4444;
+}
+
+/* No Scale Set */
+.scale-not-set {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scale-not-set-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scale-not-set-text {
+  font-size: 13px;
+  color: #6B7280;
+  font-weight: 500;
+}
+
+.scale-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.scale-divider {
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
+.scale-btn-calibrate {
+  border-color: #3B82F6 !important;
+  color: #3B82F6 !important;
+}
+
+.scale-btn-calibrate:hover {
+  background: #EFF6FF !important;
+}
+
+.scale-preset-trigger {
+  width: 160px;
+  font-size: 13px;
+}
+
+/* Calibration In Progress */
+.scale-calibrating {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: linear-gradient(135deg, #EFF6FF, #F0F9FF);
+  border: 1px solid #BFDBFE;
+  border-radius: 10px;
+  padding: 12px 16px;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.calibrating-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calibrating-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1E40AF;
+}
+
+.calibrating-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.calibrating-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #9CA3AF;
+  transition: color 0.2s;
+}
+
+.calibrating-step.active {
+  color: #1E40AF;
+  font-weight: 500;
+}
+
+.calibrating-step.completed {
+  color: #059669;
+}
+
+.step-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #E5E7EB;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.calibrating-step.active .step-marker {
+  background: #3B82F6;
+  color: white;
+}
+
+.calibrating-step.completed .step-marker {
+  background: #059669;
+  color: white;
+}
+
+.calibrating-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: fadeIn 0.2s ease;
+}
+
+.calibrating-distance-input {
+  width: 120px;
+  font-size: 13px;
+}
+
+.calibrating-unit-select {
+  width: 90px;
+  font-size: 13px;
+}
+
+.calibrating-confirm-btn {
+  background: #059669 !important;
+  color: white !important;
+  border: none !important;
+}
+
+.calibrating-confirm-btn:hover {
+  background: #047857 !important;
+}
+
+.calibrating-confirm-btn:disabled {
+  background: #D1D5DB !important;
+}
+
+.calibrating-cancel-btn {
+  align-self: flex-start;
+  color: #6B7280 !important;
+  font-size: 12px;
+}
+
+/* Scale Unit Row */
+.scale-unit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scale-unit-label {
+  font-size: 12px;
+  color: #6B7280;
+  font-weight: 500;
+}
+
+.scale-unit-trigger {
+  width: 90px;
+  font-size: 13px;
+}
+
+.scale-recalibrate-btn {
+  font-size: 12px;
+  color: #6B7280 !important;
+}
+
+/* ===== Zoom Controls ===== */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zoom-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  min-width: 48px;
+  text-align: center;
+}
+
+/* ===== Canvas Area ===== */
+.pdf-viewport {
+  position: relative;
+  flex: 1; /* Take up all remaining vertical space perfectly */
+  overflow: hidden;
+  background: #F3F4F6;
+  width: 100%;
+  height: 100%;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.04);
+  background-image: radial-gradient(#E5E7EB 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.pdf-canvas-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  /* transition purposely omitted so panning/zooming feels instantly responsive */
+}
+
+.pdf-canvas {
+  display: block;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.pdf-annotation-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none; /* Prevent browser touch scrolling when panning */
+}
+
+/* ===== Page Indicator ===== */
+.page-indicator {
+  font-size: 13px;
+  color: #6B7280;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ===== Measurements Panel ===== */
+.measurements-panel {
+  background: white;
+  padding: 16px;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+}
+
+.measurements-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #111827;
+}
+
+.measurements-no-scale {
+  font-size: 13px;
+  color: #9CA3AF;
+  font-style: italic;
+}
+
+.measurements-empty {
+  font-size: 13px;
+  color: #9CA3AF;
+}
+
+.measurements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.measurement-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid #F3F4F6;
+  font-size: 13px;
+  color: #374151;
+}
+
+.measurement-item:last-child {
+  border-bottom: none;
+}
+
+.measurement-type-linear {
+  color: #EF4444;
+  margin-right: 8px;
+}
+
+.measurement-type-area {
+  color: #3B82F6;
+  margin-right: 8px;
+  font-size: 10px;
+}
+
+/* ===== Calibration Toast ===== */
+.calibration-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #1E40AF, #3B82F6);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.35);
+  animation: slideUp 0.3s ease;
+  z-index: 50;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
