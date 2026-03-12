@@ -1,0 +1,119 @@
+﻿
+> agent-test@0.1.0 build
+> next build
+
+Γû▓ Next.js 16.1.6 (Turbopack)
+
+  Creating an optimized production build ...
+node.exe : 
+At line:1 char:1
++ & "C:\nvm4w\nodejs/no
+de.exe" "C:\nvm4w\nodej
+s/node_modules/npm/bin/
+np ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (:String) [],    
+ RemoteException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+> Build error occurred
+Error: Turbopack build 
+failed with 1 errors:
+./node_modules/pdfjs-di
+st/build/pdf.js:6247:20
+Module not found: 
+Can't resolve 'canvas'
+[0m [90m 6245 |[39m 
+[36mclass[39m [33mNo
+deCanvasFactory[39m 
+[36mextends[39m _base
+_factory[33m.[39m[33
+mBaseCanvasFactory[39m
+ {
+ [90m 6246 |[39m   _c
+reateCanvas(width[33m,
+[39m height) {
+[31m[1m>[22m[39m[9
+0m 6247 |[39m     
+[36mconst[39m 
+[33mCanvas[39m 
+[33m=[39m require([3
+2m"canvas"[39m)[33m;
+[39m
+ [90m      |[39m     
+               [31m[1
+m^[22m[39m[31m[1m^
+[22m[39m[31m[1m^[22
+m[39m[31m[1m^[22m[
+39m[31m[1m^[22m[39m
+[31m[1m^[22m[39m[3
+1m[1m^[22m[39m[31m
+[1m^[22m[39m[31m[1m
+^[22m[39m[31m[1m^[
+22m[39m[31m[1m^[22m
+[39m[31m[1m^[22m[3
+9m[31m[1m^[22m[39m
+[31m[1m^[22m[39m[31
+m[1m^[22m[39m[31m[
+1m^[22m[39m[31m[1m^
+[22m[39m
+ [90m 6248 |[39m     
+[36mreturn[39m [33mC
+anvas[39m[33m.[39mcr
+eateCanvas(width[33m,
+[39m height)[33m;[39m
+ [90m 6249 |[39m   }
+ [90m 6250 |[39m 
+}[0m
+
+
+
+Import traces:
+  Client Component 
+Browser:
+    ./node_modules/pdfj
+s-dist/build/pdf.js 
+[Client Component 
+Browser]
+    ./src/hooks/usePdfH
+andler.ts [Client 
+Component Browser]
+    ./src/components/Pd
+fViewer.tsx [Client 
+Component Browser]
+    ./src/app/page.tsx 
+[Client Component 
+Browser]
+    ./src/app/page.tsx 
+[Server Component]
+
+  Client Component SSR:
+    ./node_modules/pdfj
+s-dist/build/pdf.js 
+[Client Component SSR]
+    ./src/hooks/usePdfH
+andler.ts [Client 
+Component SSR]
+    ./src/components/Pd
+fViewer.tsx [Client 
+Component SSR]
+    ./src/app/page.tsx 
+[Client Component SSR]
+    ./src/app/page.tsx 
+[Server Component]
+
+https://nextjs.org/docs
+/messages/module-not-fo
+und
+
+
+    at <unknown> (https
+://nextjs.org/docs/mess
+ages/module-not-found)

@@ -2,6 +2,9 @@
   "name": "agent-test",
   "version": "0.1.0",
   "private": true,
+  "browser": {
+    "canvas": false
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -20,6 +23,7 @@
     "pdfjs-dist": "^3.11.174",
     "react": "^19.0.0-rc-66855b96-20241106",
     "react-dom": "^19.0.0-rc-66855b96-20241106",
+    "react-rnd": "^10.5.3",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7"
   },
