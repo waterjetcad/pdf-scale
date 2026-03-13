@@ -1,4 +1,4 @@
-import { ChangeEvent, MouseEvent, WheelEvent, useState, useRef, useEffect } from 'react';
+import { ChangeEvent, MouseEvent, PointerEvent, WheelEvent, useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScaleCalibrationPanel } from '@/components/ScaleCalibrationPanel';
 import { usePdfHandler } from '@/hooks/usePdfHandler';
@@ -131,7 +131,7 @@ export function PdfViewer() {
     }
   };
 
-  const getCanvasPoint = (e: MouseEvent<HTMLCanvasElement>): Point | null => {
+  const getCanvasPoint = (e: MouseEvent<HTMLDivElement> | PointerEvent<HTMLDivElement>): Point | null => {
     if (!annotationCanvasRef.current) return null;
     const rect = annotationCanvasRef.current.getBoundingClientRect();
     const scaleX = annotationCanvasRef.current.width / rect.width;
@@ -142,9 +142,10 @@ export function PdfViewer() {
     };
   };
 
-  const handleMouseDown = (e: MouseEvent<HTMLCanvasElement>) => {
+  const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (activeTool === 'pan') {
       setIsDragging(true);
+      e.currentTarget.setPointerCapture(e.pointerId);
       lastMousePos.current = { x: e.clientX, y: e.clientY };
       return;
     }
@@ -207,7 +208,7 @@ export function PdfViewer() {
     }
   };
 
-  const handleMouseMove = (e: MouseEvent<HTMLCanvasElement>) => {
+  const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (isDragging && activeTool === 'pan' && lastMousePos.current) {
       const dx = e.clientX - lastMousePos.current.x;
       const dy = e.clientY - lastMousePos.current.y;
@@ -240,18 +241,20 @@ export function PdfViewer() {
     }
   };
 
-  const handleMouseUp = () => {
+  const handlePointerUp = (e: PointerEvent<HTMLDivElement>) => {
     if (isDragging) {
       setIsDragging(false);
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
       lastMousePos.current = null;
       // Sync React state with the ref so subsequent renders are correct
       setPanOffset({ ...panRef.current });
     }
   };
 
-  const handleMouseLeave = () => {
+  const handlePointerCancel = (e: PointerEvent<HTMLDivElement>) => {
     if (isDragging) {
       setIsDragging(false);
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
       lastMousePos.current = null;
       setPanOffset({ ...panRef.current });
     }
@@ -531,7 +534,7 @@ export function PdfViewer() {
               <button onClick={zoomOut} className="zoom-btn" title="Zoom out">
                 <ZoomOut className="w-4 h-4" />
               </button>
-              <span className="zoom-label">{Math.round(scale * 100)}%</span>
+              <span className="zoom-label">{zoomDisplay}%</span>
               <button onClick={zoomIn} className="zoom-btn" title="Zoom in">
                 <ZoomIn className="w-4 h-4" />
               </button>
@@ -603,6 +606,11 @@ export function PdfViewer() {
           className="pdf-viewport"
           ref={containerRef}
           onWheel={handleWheel}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          style={{ cursor: cursorStyle }}
         >
           {!pdf && (
             <div className="canvas-empty-state">
@@ -614,10 +622,10 @@ export function PdfViewer() {
             </div>
           )}
           <div
+            ref={wrapperRef}
             className="pdf-canvas-wrapper"
             style={{
               transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${scale})`,
-              cursor: cursorStyle,
               display: pdf ? 'block' : 'none'
             }}
           >
@@ -628,10 +636,6 @@ export function PdfViewer() {
             <canvas
               ref={annotationCanvasRef}
               className="pdf-annotation-canvas"
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseLeave}
             />
           </div>
         </div>
