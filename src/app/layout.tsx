@@ -14,8 +14,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "PDF Takeoff – Blueprint Measurement Tool",
-  description: "Measure distances and areas on PDF blueprints with precision scale calibration",
+  title: "Easy Architech – Blueprint Measurement Tool",
+  description: "Measure distances and areas on PDF blueprints with professional precision.",
 };
 
 export default function RootLayout({

@@ -1,4 +1,5 @@
 import { ChangeEvent, MouseEvent, PointerEvent, WheelEvent, useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ScaleCalibrationPanel } from '@/components/ScaleCalibrationPanel';
 import { usePdfHandler } from '@/hooks/usePdfHandler';
@@ -6,7 +7,7 @@ import { Point } from '@/types/pdf';
 import {
   Ruler, Move, ZoomIn, ZoomOut, RotateCcw, Hand,
   Upload, ChevronLeft, ChevronRight, FileText,
-  Crosshair, Trash2, X, LayoutGrid, Undo2, Check
+  Crosshair, Trash2, X, LayoutGrid, Undo2, Check, Home
 } from 'lucide-react';
 
 export function PdfViewer() {
@@ -508,6 +509,18 @@ export function PdfViewer() {
       <div className="pdf-viewer-main">
         {/* Toolbar */}
         <div className="pdf-toolbar">
+          {/* Nav */}
+          <div className="toolbar-section">
+            <Link 
+              href="/" 
+              className="tool-btn flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors w-9 h-9 rounded-md" 
+              title="Return to Home"
+            >
+              <Home className="w-4 h-4" />
+            </Link>
+          </div>
+          <div className="toolbar-divider" />
+          
           {/* Upload */}
           <div className="toolbar-section">
             <input
