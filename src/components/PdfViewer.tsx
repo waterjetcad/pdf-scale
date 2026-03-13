@@ -6,7 +6,7 @@ import { Point } from '@/types/pdf';
 import {
   Ruler, Move, ZoomIn, ZoomOut, RotateCcw, Hand,
   Upload, ChevronLeft, ChevronRight, FileText,
-  Crosshair, Trash2, X, LayoutGrid, Undo2
+  Crosshair, Trash2, X, LayoutGrid, Undo2, Check
 } from 'lucide-react';
 
 export function PdfViewer() {
@@ -189,6 +189,7 @@ export function PdfViewer() {
     }
 
     if (tool === 'measure') {
+      if (!pixelsPerUnit) return;
       if (!measureStart) {
         setMeasureStart(point);
         setCurrentMeasurement([point]);
@@ -207,6 +208,7 @@ export function PdfViewer() {
         setCurrentMeasurement([]);
       }
     } else if (tool === 'area') {
+      if (!pixelsPerUnit) return;
       if (
         areaPoints.length > 2 &&
         Math.abs(point.x - areaPoints[0].x) < 10 / scale &&
@@ -255,6 +257,8 @@ export function PdfViewer() {
       setCalibrationPreviewPoint(point);
       return;
     }
+
+    if (!pixelsPerUnit) return;
 
     if (!measureStart && areaPoints.length === 0) return;
 
@@ -379,7 +383,19 @@ export function PdfViewer() {
   };
 
   const pageMeasurements = measurements[currentPage] || [];
-  const linearMeasurements = pageMeasurements.filter(m => m.type === 'linear');
+  const displayMeasurements = [...pageMeasurements];
+  
+  const isDrawingArea = tool === 'area' && areaPoints.length > 2;
+  if (isDrawingArea) {
+    displayMeasurements.push({
+      id: 'preview-area',
+      type: 'area' as const,
+      points: areaPoints,
+      value: parseFloat(calculateArea(areaPoints) || '0')
+    });
+  }
+
+  const linearMeasurements = displayMeasurements.filter(m => m.type === 'linear' && m.id !== 'preview-area');
   const linearTotal = linearMeasurements.reduce((sum, m) => sum + m.value, 0);
 
   return (
@@ -409,23 +425,51 @@ export function PdfViewer() {
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {pageMeasurements.map((m, i) => (
+            {displayMeasurements.map((m, i) => {
+              const isPreview = m.id === 'preview-area';
+              return (
               <div
                 key={m.id}
-                className={`measurement-card ${m.type === 'linear' ? 'measurement-card-linear' : 'measurement-card-area'}`}
+                className={`measurement-card ${m.type === 'linear' ? 'measurement-card-linear' : 'measurement-card-area'} ${isPreview ? 'ring-2 ring-blue-400 ring-opacity-50' : ''}`}
               >
                 <div className="measurement-card-header">
                   <span className="measurement-card-label">
                     <div className={m.type === 'linear' ? 'measurement-card-dot-linear' : 'measurement-card-dot-area'} />
-                    {m.type === 'linear' ? 'Distance' : 'Area'} {i + 1}
+                    {m.type === 'linear' ? 'Distance' : 'Area'} {isPreview ? '(Drawing)' : i + 1}
                   </span>
-                  <button
-                    className="measurement-delete-btn"
-                    onClick={() => deleteMeasurement(m.id)}
-                    title="Delete measurement"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  {isPreview ? (
+                    <button
+                      className="measurement-delete-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Finish shape
+                        const newMeasurement = {
+                          id: Date.now().toString(),
+                          type: 'area' as const,
+                          points: areaPoints,
+                          value: parseFloat(calculateArea(areaPoints) || '0')
+                        };
+                        setMeasurements(prev => ({
+                          ...prev,
+                          [currentPage]: [...(prev[currentPage] || []), newMeasurement]
+                        }));
+                        setAreaPoints([]);
+                        setCurrentMeasurement([]);
+                      }}
+                      title="Finish Shape"
+                      style={{ color: '#3b82f6', background: 'rgba(59,130,246,0.1)' }}
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <button
+                      className="measurement-delete-btn"
+                      onClick={() => deleteMeasurement(m.id)}
+                      title="Delete measurement"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
                 <div className="measurement-card-value">
                   {m.value}
@@ -434,9 +478,9 @@ export function PdfViewer() {
                   </span>
                 </div>
               </div>
-            ))}
+            )})}
 
-            {pageMeasurements.length === 0 && pixelsPerUnit && (
+            {displayMeasurements.length === 0 && pixelsPerUnit && (
               <div className="measurements-empty-state">
                 <div className="measurements-empty-icon">
                   <LayoutGrid className="w-5 h-5" />
