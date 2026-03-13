@@ -6,7 +6,7 @@ import { Point } from '@/types/pdf';
 import {
   Ruler, Move, ZoomIn, ZoomOut, RotateCcw, Hand,
   Upload, ChevronLeft, ChevronRight, FileText,
-  Crosshair, Trash2, X, LayoutGrid
+  Crosshair, Trash2, X, LayoutGrid, Undo2
 } from 'lucide-react';
 
 export function PdfViewer() {
@@ -115,6 +115,30 @@ export function PdfViewer() {
     panRef.current = panOffset;
     applyTransform();
   }, [panOffset]);
+
+  const handleUndo = () => {
+    if (tool === 'calibrate' && isSettingScale) {
+      if (calibrationPoints.length > 0) {
+        setCalibrationPoints(calibrationPoints.slice(0, -1));
+        setCalibrationPreviewPoint(null);
+      }
+    } else if (tool === 'measure') {
+      if (measureStart) {
+        setMeasureStart(null);
+        setCurrentMeasurement([]);
+      }
+    } else if (tool === 'area') {
+      if (areaPoints.length > 0) {
+        const newPoints = areaPoints.slice(0, -1);
+        setAreaPoints(newPoints);
+        setCurrentMeasurement(newPoints);
+      }
+    }
+  };
+
+  const canUndo = (tool === 'calibrate' && isSettingScale && calibrationPoints.length > 0) ||
+                  (tool === 'measure' && measureStart !== null) ||
+                  (tool === 'area' && areaPoints.length > 0);
 
   const activeTool = isSpacePressed ? 'pan' : tool;
   const cursorStyle = activeTool === 'pan'
@@ -523,6 +547,17 @@ export function PdfViewer() {
               className={`tool-btn ${tool === 'area' && !isSettingScale ? 'tool-btn-active' : ''}`}
             >
               <Move className="w-4 h-4" />
+            </Button>
+            <div className="toolbar-divider" />
+            <Button
+              onClick={handleUndo}
+              variant="outline"
+              size="sm"
+              disabled={!canUndo}
+              title="Undo last point"
+              className="tool-btn"
+            >
+              <Undo2 className="w-4 h-4" />
             </Button>
           </div>
 
