@@ -31,6 +31,10 @@ interface ScaleCalibrationPanelProps {
   onSetMeasurementUnit: (unit: MeasurementUnit) => void;
 }
 
+const archScales = ARCHITECTURAL_SCALES.filter(s => s.group === 'architectural');
+const engScales = ARCHITECTURAL_SCALES.filter(s => s.group === 'engineering');
+const metricScales = ARCHITECTURAL_SCALES.filter(s => s.group === 'metric');
+
 export function ScaleCalibrationPanel({
   isSettingScale,
   scaleCalibration,
@@ -113,7 +117,26 @@ export function ScaleCalibrationPanel({
                 <SelectValue placeholder="Use Preset" />
               </SelectTrigger>
               <SelectContent>
-                {ARCHITECTURAL_SCALES.map((s) => (
+                <div style={{ padding: '4px 8px', fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Architectural
+                </div>
+                {archScales.map((s) => (
+                  <SelectItem key={s.label} value={s.label}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+                <div style={{ padding: '8px 8px 4px', fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', borderTop: '1px solid #e2e8f0', marginTop: '4px' }}>
+                  Engineering / Civil
+                </div>
+                {engScales.map((s) => (
+                  <SelectItem key={s.label} value={s.label}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+                <div style={{ padding: '8px 8px 4px', fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', borderTop: '1px solid #e2e8f0', marginTop: '4px' }}>
+                  Metric
+                </div>
+                {metricScales.map((s) => (
                   <SelectItem key={s.label} value={s.label}>
                     {s.label}
                   </SelectItem>
@@ -180,8 +203,11 @@ export function ScaleCalibrationPanel({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ft">Feet</SelectItem>
-                  <SelectItem value="m">Meters</SelectItem>
                   <SelectItem value="in">Inches</SelectItem>
+                  <SelectItem value="yd">Yards</SelectItem>
+                  <SelectItem value="m">Meters</SelectItem>
+                  <SelectItem value="cm">cm</SelectItem>
+                  <SelectItem value="mm">mm</SelectItem>
                 </SelectContent>
               </Select>
               <Button
@@ -220,8 +246,11 @@ export function ScaleCalibrationPanel({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ft">Feet</SelectItem>
-              <SelectItem value="m">Meters</SelectItem>
               <SelectItem value="in">Inches</SelectItem>
+              <SelectItem value="yd">Yards</SelectItem>
+              <SelectItem value="m">Meters</SelectItem>
+              <SelectItem value="cm">cm</SelectItem>
+              <SelectItem value="mm">mm</SelectItem>
             </SelectContent>
           </Select>
           <Button

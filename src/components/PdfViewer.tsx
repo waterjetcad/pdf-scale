@@ -1,10 +1,13 @@
 import { ChangeEvent, MouseEvent, WheelEvent, useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ScaleCalibrationPanel } from '@/components/ScaleCalibrationPanel';
 import { usePdfHandler } from '@/hooks/usePdfHandler';
 import { Point } from '@/types/pdf';
-import { Ruler, Move, ZoomIn, ZoomOut, RotateCcw, Hand } from 'lucide-react';
+import {
+  Ruler, Move, ZoomIn, ZoomOut, RotateCcw, Hand,
+  Upload, ChevronLeft, ChevronRight, FileText,
+  Crosshair, Trash2, X, LayoutGrid
+} from 'lucide-react';
 
 export function PdfViewer() {
   const {
@@ -43,17 +46,43 @@ export function PdfViewer() {
     cancelCalibration,
   } = usePdfHandler();
 
-  // Pan and Zoom State
+  // Pan and Zoom — use refs for real-time transform to avoid React re-render jank
   const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [zoomDisplay, setZoomDisplay] = useState(100); // display-only zoom %
   const lastMousePos = useRef<Point | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Refs that hold the "live" transform values — written synchronously, no re-render
+  const scaleRef = useRef(1);
+  const panRef = useRef<Point>({ x: 0, y: 0 });
+  const rafId = useRef<number>(0);
+  const isAnimating = useRef(false);
+
+  /** Push the current ref values into the DOM in one rAF pass */
+  const applyTransform = () => {
+    if (!wrapperRef.current) return;
+    const s = scaleRef.current;
+    const p = panRef.current;
+    wrapperRef.current.style.transform = `translate(${p.x}px, ${p.y}px) scale(${s})`;
+  };
+
+  const scheduleTransform = () => {
+    if (isAnimating.current) return;
+    isAnimating.current = true;
+    rafId.current = requestAnimationFrame(() => {
+      applyTransform();
+      isAnimating.current = false;
+    });
+  };
 
   // Handle Spacebar for temporary pan mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if typing in an input
       if (e.target instanceof HTMLInputElement) return;
       if (e.code === 'Space' && !e.repeat) {
         e.preventDefault();
@@ -73,19 +102,31 @@ export function PdfViewer() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      cancelAnimationFrame(rafId.current);
     };
   }, []);
 
+  // Keep React state in sync for things that need it (annotation canvas, clamp checks)
+  useEffect(() => {
+    scaleRef.current = scale;
+  }, [scale]);
+
+  useEffect(() => {
+    panRef.current = panOffset;
+    applyTransform();
+  }, [panOffset]);
+
   const activeTool = isSpacePressed ? 'pan' : tool;
-  const cursorStyle = activeTool === 'pan' 
-    ? (isDragging ? 'grabbing' : 'grab') 
+  const cursorStyle = activeTool === 'pan'
+    ? (isDragging ? 'grabbing' : 'grab')
     : 'crosshair';
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       loadPdf(file);
-      // Reset pan/zoom on new file
+      setFileName(file.name);
+      panRef.current = { x: 0, y: 0 };
       setPanOffset({ x: 0, y: 0 });
     }
   };
@@ -93,13 +134,8 @@ export function PdfViewer() {
   const getCanvasPoint = (e: MouseEvent<HTMLCanvasElement>): Point | null => {
     if (!annotationCanvasRef.current) return null;
     const rect = annotationCanvasRef.current.getBoundingClientRect();
-    
-    // The CSS transform: scale() is applied to the wrapper, which scales the bounding rect.
-    // So (clientX - rect.left) gives us the distance in SCREEN pixels from the left edge of the scaled canvas.
-    // To get back to the internal (unscaled) canvas coordinates, we just multiply by (internal width / screen width)
     const scaleX = annotationCanvasRef.current.width / rect.width;
     const scaleY = annotationCanvasRef.current.height / rect.height;
-    
     return {
       x: (e.clientX - rect.left) * scaleX,
       y: (e.clientY - rect.top) * scaleY,
@@ -175,8 +211,13 @@ export function PdfViewer() {
     if (isDragging && activeTool === 'pan' && lastMousePos.current) {
       const dx = e.clientX - lastMousePos.current.x;
       const dy = e.clientY - lastMousePos.current.y;
-      setPanOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      // Update ref directly for instant feedback
+      panRef.current = {
+        x: panRef.current.x + dx,
+        y: panRef.current.y + dy
+      };
       lastMousePos.current = { x: e.clientX, y: e.clientY };
+      scheduleTransform();
       return;
     }
 
@@ -185,7 +226,6 @@ export function PdfViewer() {
     const point = getCanvasPoint(e);
     if (!point) return;
 
-    // Calibration preview
     if (isSettingScale && tool === 'calibrate' && calibrationPoints.length === 1) {
       setCalibrationPreviewPoint(point);
       return;
@@ -204,6 +244,8 @@ export function PdfViewer() {
     if (isDragging) {
       setIsDragging(false);
       lastMousePos.current = null;
+      // Sync React state with the ref so subsequent renders are correct
+      setPanOffset({ ...panRef.current });
     }
   };
 
@@ -211,329 +253,397 @@ export function PdfViewer() {
     if (isDragging) {
       setIsDragging(false);
       lastMousePos.current = null;
+      setPanOffset({ ...panRef.current });
     }
     setCalibrationPreviewPoint(null);
   };
 
   const handleWheel = (e: WheelEvent<HTMLDivElement>) => {
-    // Zoom on Ctrl+Wheel or plain Wheel (depending on preference, we'll allow plain wheel for zooming now
-    // since panning is handled via dragging. This makes it feel like Google Maps).
     e.preventDefault();
-
     if (!containerRef.current) return;
 
     const rect = containerRef.current.getBoundingClientRect();
-    
-    // Mouse position relative to the container viewport
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Calculate zoom delta
-    const zoomFactor = 1.1;
-    const isZoomIn = e.deltaY < 0;
-    
-    setScale(prevScale => {
-      const newScale = isZoomIn ? prevScale * zoomFactor : prevScale / zoomFactor;
-      // Clamp scale between 0.1 and 10
-      const clampedScale = Math.max(0.1, Math.min(10, newScale));
-      
-      if (clampedScale !== prevScale) {
-        // We want the point under the mouse to stay in the exact same screen position.
-        // Current distance from mouse to the transformed origin:
-        const distX = mouseX - panOffset.x;
-        const distY = mouseY - panOffset.y;
-        
-        // When scale changes, that distance is multiplied by (newScale / prevScale)
-        const ratio = clampedScale / prevScale;
-        const newDistX = distX * ratio;
-        const newDistY = distY * ratio;
-        
-        // The new offset ensures mouseX = newOffset + newDist
-        setPanOffset({
-          x: mouseX - newDistX,
-          y: mouseY - newDistY
-        });
-      }
+    // Smoother zoom factor — use deltaY magnitude for proportional zoom
+    const delta = -e.deltaY;
+    const zoomIntensity = 0.0015;
+    const factor = Math.exp(delta * zoomIntensity);
 
-      return clampedScale;
-    });
+    const prevScale = scaleRef.current;
+    const newScale = Math.max(0.1, Math.min(10, prevScale * factor));
+
+    if (newScale !== prevScale) {
+      const ratio = newScale / prevScale;
+      const distX = mouseX - panRef.current.x;
+      const distY = mouseY - panRef.current.y;
+
+      // Update refs directly — no React re-render needed
+      scaleRef.current = newScale;
+      panRef.current = {
+        x: mouseX - distX * ratio,
+        y: mouseY - distY * ratio
+      };
+
+      scheduleTransform();
+
+      // Debounce the React state sync so the zoom % label updates smoothly
+      setZoomDisplay(Math.round(newScale * 100));
+      setScale(newScale);
+      setPanOffset({ ...panRef.current });
+    }
   };
 
   const zoomIn = () => {
-    setScale(prev => Math.min(10, prev * 1.2));
-    // When zooming via buttons, zoom towards center
+    const prevScale = scaleRef.current;
+    const newScale = Math.min(10, prevScale * 1.2);
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
-      const distX = centerX - panOffset.x;
-      const distY = centerY - panOffset.y;
-      setPanOffset({
-        x: centerX - distX * 1.2,
-        y: centerY - distY * 1.2
-      });
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      const ratio = newScale / prevScale;
+      scaleRef.current = newScale;
+      panRef.current = {
+        x: cx - (cx - panRef.current.x) * ratio,
+        y: cy - (cy - panRef.current.y) * ratio
+      };
+      applyTransform();
     }
+    setScale(newScale);
+    setPanOffset({ ...panRef.current });
+    setZoomDisplay(Math.round(newScale * 100));
   };
 
   const zoomOut = () => {
-    setScale(prev => Math.max(0.1, prev / 1.2));
+    const prevScale = scaleRef.current;
+    const newScale = Math.max(0.1, prevScale / 1.2);
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
-      const distX = centerX - panOffset.x;
-      const distY = centerY - panOffset.y;
-      setPanOffset({
-        x: centerX - distX / 1.2,
-        y: centerY - distY / 1.2
-      });
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      const ratio = newScale / prevScale;
+      scaleRef.current = newScale;
+      panRef.current = {
+        x: cx - (cx - panRef.current.x) * ratio,
+        y: cy - (cy - panRef.current.y) * ratio
+      };
+      applyTransform();
     }
+    setScale(newScale);
+    setPanOffset({ ...panRef.current });
+    setZoomDisplay(Math.round(newScale * 100));
   };
 
   const resetZoom = () => {
+    scaleRef.current = 1;
+    panRef.current = { x: 0, y: 0 };
+    applyTransform();
     setScale(1);
     setPanOffset({ x: 0, y: 0 });
+    setZoomDisplay(100);
   };
+
+  const deleteMeasurement = (id: string) => {
+    setMeasurements(prev => ({
+      ...prev,
+      [currentPage]: (prev[currentPage] || []).filter(m => m.id !== id)
+    }));
+  };
+
+  const pageMeasurements = measurements[currentPage] || [];
+  const linearMeasurements = pageMeasurements.filter(m => m.type === 'linear');
+  const linearTotal = linearMeasurements.reduce((sum, m) => sum + m.value, 0);
 
   return (
     <div className="pdf-viewer-layout">
-      {/* LEFT SIDEBAR: Measurements Panel */}
-      <div className="measurements-sidebar flex flex-col">
-        <div className="p-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Ruler className="w-5 h-5 text-blue-600" />
+      {/* ===== LEFT SIDEBAR ===== */}
+      <div className="measurements-sidebar">
+        <div className="sidebar-header">
+          <h2>
+            <div className="sidebar-header-icon">
+              <Ruler className="w-4 h-4" />
+            </div>
             Measurements
           </h2>
-          <p className="text-sm text-gray-500 mt-1">Page {currentPage}</p>
+          <p className="sidebar-page-label">Page {currentPage}{pdf ? ` of ${pdf.numPages}` : ''}</p>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+        <div className="sidebar-body">
           {!pixelsPerUnit && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
-              <p className="text-sm text-yellow-800">
-                Set the scale first to begin measuring blueprints.
-              </p>
+            <div className="scale-warning-banner">
+              <div className="scale-warning-icon">
+                <Crosshair className="w-3.5 h-3.5" />
+              </div>
+              <span className="scale-warning-text">
+                Set the scale in the toolbar to begin measuring your blueprints.
+              </span>
             </div>
           )}
-          
-          <div className="space-y-3">
-            {(measurements[currentPage] || []).map((m, i) => (
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {pageMeasurements.map((m, i) => (
               <div
                 key={m.id}
-                className="bg-white border border-gray-200 rounded-md p-3 shadow-sm"
+                className={`measurement-card ${m.type === 'linear' ? 'measurement-card-linear' : 'measurement-card-area'}`}
               >
-                {m.type === 'linear' ? (
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                      <div className="w-3 h-0.5 bg-blue-500 rounded-full" />
-                      Distance {i + 1}
-                    </span>
-                    <strong className="text-sm text-gray-900">{m.value} {measurementUnit}</strong>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                      <div className="w-3 h-3 bg-indigo-500/20 border border-indigo-500 rounded-sm" />
-                      Area {i + 1}
-                    </span>
-                    <strong className="text-sm text-gray-900">{m.value} {measurementUnit}²</strong>
-                  </div>
-                )}
+                <div className="measurement-card-header">
+                  <span className="measurement-card-label">
+                    <div className={m.type === 'linear' ? 'measurement-card-dot-linear' : 'measurement-card-dot-area'} />
+                    {m.type === 'linear' ? 'Distance' : 'Area'} {i + 1}
+                  </span>
+                  <button
+                    className="measurement-delete-btn"
+                    onClick={() => deleteMeasurement(m.id)}
+                    title="Delete measurement"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="measurement-card-value">
+                  {m.value}
+                  <span className="measurement-card-unit">
+                    {measurementUnit}{m.type === 'area' ? '²' : ''}
+                  </span>
+                </div>
               </div>
             ))}
-            
-            {(measurements[currentPage] || []).length === 0 && pixelsPerUnit && (
-              <div className="text-center py-8">
-                <p className="text-sm text-gray-400">No measurements yet. Select a tool and click on the drawing.</p>
+
+            {pageMeasurements.length === 0 && pixelsPerUnit && (
+              <div className="measurements-empty-state">
+                <div className="measurements-empty-icon">
+                  <LayoutGrid className="w-5 h-5" />
+                </div>
+                <span className="measurements-empty-text">
+                  No measurements yet. Select a tool and click on the drawing.
+                </span>
               </div>
             )}
           </div>
+
+          {/* Totals */}
+          {linearMeasurements.length > 1 && (
+            <div className="measurement-total-card">
+              <div className="measurement-total-label">Total Distance</div>
+              <div className="measurement-total-value">
+                {linearTotal.toFixed(2)} {measurementUnit}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* RIGHT CONTENT: Toolbars and PDF Canvas */}
-      <div className="pdf-viewer-main flex-col">
-        {/* Top Toolbar */}
+      {/* ===== RIGHT CONTENT ===== */}
+      <div className="pdf-viewer-main">
+        {/* Toolbar */}
         <div className="pdf-toolbar">
-        {/* File Upload */}
-        <div className="toolbar-section">
-          <Input
-            type="file"
-            accept=".pdf"
-            onChange={handleFileChange}
-            className="toolbar-file-input"
-          />
-        </div>
-
-        {/* Scale Calibration */}
-        <div className="toolbar-section toolbar-section-grow">
-          <ScaleCalibrationPanel
-            isSettingScale={isSettingScale}
-            scaleCalibration={scaleCalibration}
-            calibrationPoints={calibrationPoints}
-            pixelsPerUnit={pixelsPerUnit}
-            measurementUnit={measurementUnit}
-            scale={scale} // Need to pass scale to resolve preset values properly
-            onStartCalibration={startCalibration}
-            onCancelCalibration={cancelCalibration}
-            onSetScaleFromPoints={setScaleFromPoints}
-            onSetScaleFromPreset={setScaleFromPreset}
-            onResetScale={resetScale}
-            onSetMeasurementUnit={setMeasurementUnit}
-          />
-        </div>
-      </div>
-
-      {/* Secondary Toolbar */}
-      <div className="pdf-toolbar-secondary">
-        {/* Navigation / Panning */}
-        <div className="toolbar-section">
-          <Button
-            onClick={() => {
-              if (isSettingScale) cancelCalibration();
-              setTool('pan');
-            }}
-            variant={tool === 'pan' && !isSettingScale ? "default" : "outline"}
-            size="sm"
-            title="Pan Document (Spacebar)"
-            className="tool-btn"
-          >
-            <Hand className="w-4 h-4 mr-1.5" />
-            Pan
-          </Button>
-        </div>
-        
-        <div className="toolbar-divider" />
-
-        {/* Measurement Tools */}
-        <div className="toolbar-section">
-          <Button
-            onClick={() => {
-              if (isSettingScale) cancelCalibration();
-              setTool('measure');
-            }}
-            variant={tool === 'measure' && !isSettingScale ? "default" : "outline"}
-            size="sm"
-            disabled={!pixelsPerUnit}
-            title={!pixelsPerUnit ? "Set scale first" : "Linear measurement"}
-            className="tool-btn"
-          >
-            <Ruler className="w-4 h-4 mr-1.5" />
-            Measure
-          </Button>
-          <Button
-            onClick={() => {
-              if (isSettingScale) cancelCalibration();
-              setTool('area');
-            }}
-            variant={tool === 'area' && !isSettingScale ? "default" : "outline"}
-            size="sm"
-            disabled={!pixelsPerUnit}
-            title={!pixelsPerUnit ? "Set scale first" : "Area measurement"}
-            className="tool-btn"
-          >
-            <Move className="w-4 h-4 mr-1.5" />
-            Area
-          </Button>
-          <Button
-            onClick={() => {
-              setMeasurements({});
-              setMeasureStart(null);
-              setAreaPoints([]);
-              setCurrentMeasurement([]);
-            }}
-            variant="destructive"
-            size="sm"
-          >
-            Clear All
-          </Button>
-        </div>
-
-        <div className="toolbar-divider" />
-
-        {/* Zoom Controls */}
-        <div className="toolbar-section">
-          <div className="zoom-controls">
-            <Button onClick={zoomOut} variant="outline" size="sm" title="Zoom out">
-              <ZoomOut className="w-4 h-4" />
-            </Button>
-            <span className="zoom-label">{Math.round(scale * 100)}%</span>
-            <Button onClick={zoomIn} variant="outline" size="sm" title="Zoom in">
-              <ZoomIn className="w-4 h-4" />
-            </Button>
-            <Button onClick={resetZoom} variant="ghost" size="sm" title="Reset zoom/pan">
-              <RotateCcw className="w-3.5 h-3.5" />
-            </Button>
+          {/* Upload */}
+          <div className="toolbar-section">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
+              id="pdf-upload"
+            />
+            <label htmlFor="pdf-upload" className="upload-btn">
+              <Upload className="w-4 h-4" />
+              {fileName ? 'Change PDF' : 'Open PDF'}
+            </label>
+            {fileName && (
+              <span className="upload-btn-filename">
+                <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+                {fileName}
+              </span>
+            )}
           </div>
-        </div>
 
-        {/* Page Navigation */}
-        {pdf && (
-          <div className="toolbar-section toolbar-section-right">
+          <div className="toolbar-divider" />
+
+          {/* Scale */}
+          <div className="toolbar-section toolbar-section-grow">
+            <ScaleCalibrationPanel
+              isSettingScale={isSettingScale}
+              scaleCalibration={scaleCalibration}
+              calibrationPoints={calibrationPoints}
+              pixelsPerUnit={pixelsPerUnit}
+              measurementUnit={measurementUnit}
+              scale={scale}
+              onStartCalibration={startCalibration}
+              onCancelCalibration={cancelCalibration}
+              onSetScaleFromPoints={setScaleFromPoints}
+              onSetScaleFromPreset={setScaleFromPreset}
+              onResetScale={resetScale}
+              onSetMeasurementUnit={setMeasurementUnit}
+            />
+          </div>
+
+          <div className="toolbar-divider" />
+
+          {/* Tools */}
+          <div className="toolbar-section">
             <Button
               onClick={() => {
-                setCurrentPage(Math.max(1, currentPage - 1));
-                setPanOffset({ x: 0, y: 0 }); // reset pan on page change
+                if (isSettingScale) cancelCalibration();
+                setTool('pan');
               }}
-              disabled={currentPage === 1}
               variant="outline"
               size="sm"
+              title="Pan (Spacebar)"
+              className={`tool-btn ${tool === 'pan' && !isSettingScale ? 'tool-btn-active' : ''}`}
             >
-              Previous
+              <Hand className="w-4 h-4" />
             </Button>
-            <span className="page-indicator">
-              Page {currentPage} of {pdf.numPages}
-            </span>
             <Button
               onClick={() => {
-                setCurrentPage(Math.min(pdf.numPages, currentPage + 1));
-                setPanOffset({ x: 0, y: 0 }); // reset pan on page change
+                if (isSettingScale) cancelCalibration();
+                setTool('measure');
               }}
-              disabled={currentPage === pdf.numPages}
               variant="outline"
               size="sm"
+              disabled={!pixelsPerUnit}
+              title={!pixelsPerUnit ? "Set scale first" : "Linear measurement"}
+              className={`tool-btn ${tool === 'measure' && !isSettingScale ? 'tool-btn-active' : ''}`}
             >
-              Next
+              <Ruler className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={() => {
+                if (isSettingScale) cancelCalibration();
+                setTool('area');
+              }}
+              variant="outline"
+              size="sm"
+              disabled={!pixelsPerUnit}
+              title={!pixelsPerUnit ? "Set scale first" : "Area measurement"}
+              className={`tool-btn ${tool === 'area' && !isSettingScale ? 'tool-btn-active' : ''}`}
+            >
+              <Move className="w-4 h-4" />
             </Button>
           </div>
-        )}
-      </div>
 
-      {/* Canvas Area */}
-      <div
-        className="pdf-viewport"
-        ref={containerRef}
-        onWheel={handleWheel}
-      >
-        <div 
-          className="pdf-canvas-wrapper"
-          style={{
-            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${scale})`,
-            cursor: cursorStyle
-          }}
+          <div className="toolbar-divider" />
+
+          {/* Zoom */}
+          <div className="toolbar-section">
+            <div className="zoom-controls">
+              <button onClick={zoomOut} className="zoom-btn" title="Zoom out">
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <span className="zoom-label">{Math.round(scale * 100)}%</span>
+              <button onClick={zoomIn} className="zoom-btn" title="Zoom in">
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <button onClick={resetZoom} className="zoom-btn" title="Reset view">
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {pageMeasurements.length > 0 && (
+            <>
+              <div className="toolbar-divider" />
+              <div className="toolbar-section">
+                <Button
+                  onClick={() => {
+                    setMeasurements({});
+                    setMeasureStart(null);
+                    setAreaPoints([]);
+                    setCurrentMeasurement([]);
+                  }}
+                  variant="outline"
+                  size="sm"
+                  title="Clear all measurements"
+                  className="tool-btn"
+                  style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* Page Navigation */}
+          {pdf && (
+            <div className="toolbar-section toolbar-section-right">
+              <div className="page-nav">
+                <button
+                  onClick={() => {
+                    setCurrentPage(Math.max(1, currentPage - 1));
+                    setPanOffset({ x: 0, y: 0 });
+                  }}
+                  disabled={currentPage === 1}
+                  className="page-nav-btn"
+                  title="Previous page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="page-indicator">
+                  {currentPage} / {pdf.numPages}
+                </span>
+                <button
+                  onClick={() => {
+                    setCurrentPage(Math.min(pdf.numPages, currentPage + 1));
+                    setPanOffset({ x: 0, y: 0 });
+                  }}
+                  disabled={currentPage === pdf.numPages}
+                  className="page-nav-btn"
+                  title="Next page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Canvas Area */}
+        <div
+          className="pdf-viewport"
+          ref={containerRef}
+          onWheel={handleWheel}
         >
-          <canvas
-            ref={pdfCanvasRef}
-            className="pdf-canvas"
-          />
-          <canvas
-            ref={annotationCanvasRef}
-            className="pdf-annotation-canvas"
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseLeave}
-          />
+          {!pdf && (
+            <div className="canvas-empty-state">
+              <div className="canvas-empty-icon">
+                <FileText className="w-7 h-7" />
+              </div>
+              <span className="canvas-empty-text">No PDF loaded</span>
+              <span className="canvas-empty-hint">Click &ldquo;Open PDF&rdquo; to get started</span>
+            </div>
+          )}
+          <div
+            className="pdf-canvas-wrapper"
+            style={{
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${scale})`,
+              cursor: cursorStyle,
+              display: pdf ? 'block' : 'none'
+            }}
+          >
+            <canvas
+              ref={pdfCanvasRef}
+              className="pdf-canvas"
+            />
+            <canvas
+              ref={annotationCanvasRef}
+              className="pdf-annotation-canvas"
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseLeave}
+            />
+          </div>
         </div>
-      </div>
-
       </div>
 
       {/* Calibration Toast */}
       {isSettingScale && tool === 'calibrate' && (
         <div className="calibration-toast">
-          <Ruler className="w-4 h-4" />
-          {calibrationPoints.length === 0 && "Click the first endpoint of a known dimension on your drawing"}
+          <div className="calibration-toast-icon">
+            <Ruler className="w-3.5 h-3.5" />
+          </div>
+          {calibrationPoints.length === 0 && "Click the first endpoint of a known dimension"}
           {calibrationPoints.length === 1 && "Now click the second endpoint"}
           {calibrationPoints.length === 2 && "Enter the real-world distance above and confirm"}
         </div>

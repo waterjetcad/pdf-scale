@@ -118,24 +118,43 @@ export const usePdfHandler = () => {
   }, []);
 
   const setScaleFromPreset = useCallback((preset: ArchitecturalScale) => {
-    // Architectural scales: ratio = inches on paper per foot in real life
-    // PDF is 72 DPI, so 1 inch on paper = 72 pixels.
-    // We render at BASE_RENDER_SCALE, so 1 inch on paper = 72 * BASE_RENDER_SCALE pixels.
-    
-    // pixelsPerUnit (pixels per foot) = ratio * 72 * BASE_RENDER_SCALE
-    const ppu = preset.ratio * PDF_DPI * BASE_RENDER_SCALE;
+    if (preset.group === 'metric') {
+      // Metric scales: ratio is dimensionless (1:n means 1 unit on paper = n units real)
+      // PDF is 72 DPI, so 1 inch on paper = 72 pixels.
+      // We render at BASE_RENDER_SCALE, so 1 inch on paper = 72 * BASE_RENDER_SCALE px.
+      // 1 inch = 25.4 mm. So 1mm on paper = (72 * BASE_RENDER_SCALE) / 25.4 pixels.
+      // At 1:n scale, 1mm on paper = n mm in real life.
+      // pixelsPerUnit (pixels per mm) = pixelsPerMmOnPaper / n
+      const pixelsPerMmOnPaper = (PDF_DPI * BASE_RENDER_SCALE) / 25.4;
+      const ppu = pixelsPerMmOnPaper / preset.ratio;
 
-    setPixelsPerUnit(ppu);
-    setMeasurementUnit('ft');
-    setScaleCalibration({
-      points: null,
-      pixelDistance: 0,
-      realDistance: 0,
-      unit: 'ft',
-      label: preset.label,
-      pixelsPerUnit: ppu,
-    });
-  }, []); // scale is removed from dependencies 
+      setPixelsPerUnit(ppu);
+      setMeasurementUnit('mm');
+      setScaleCalibration({
+        points: null,
+        pixelDistance: 0,
+        realDistance: 0,
+        unit: 'mm',
+        label: preset.label,
+        pixelsPerUnit: ppu,
+      });
+    } else {
+      // Architectural/Engineering scales: ratio = inches on paper per foot in real life
+      // pixelsPerUnit (pixels per foot) = ratio * 72 * BASE_RENDER_SCALE
+      const ppu = preset.ratio * PDF_DPI * BASE_RENDER_SCALE;
+
+      setPixelsPerUnit(ppu);
+      setMeasurementUnit('ft');
+      setScaleCalibration({
+        points: null,
+        pixelDistance: 0,
+        realDistance: 0,
+        unit: 'ft',
+        label: preset.label,
+        pixelsPerUnit: ppu,
+      });
+    }
+  }, []);
 
   const resetScale = useCallback(() => {
     setPixelsPerUnit(null);
@@ -298,7 +317,8 @@ export const usePdfHandler = () => {
 
     // Draw current measurement preview
     if (currentMeasurement.length > 0) {
-      drawMeasurement(currentMeasurement, true, tool as 'area' | 'linear');
+      const previewType = tool === 'measure' ? 'linear' : 'area';
+      drawMeasurement(currentMeasurement, true, previewType);
     }
 
     // Draw calibration reference line (persisted)
