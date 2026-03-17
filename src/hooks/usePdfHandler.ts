@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import {
   PageMeasurements,
+  PageTextAnnotations,
+  TextAnnotation,
   Point,
   MeasurementUnit,
   Tool,
@@ -36,6 +38,13 @@ export const usePdfHandler = () => {
   const [currentMeasurement, setCurrentMeasurement] = useState<Point[]>([]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
+  // Text annotation state
+  const [textAnnotations, setTextAnnotations] = useState<PageTextAnnotations>({});
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+
+  // Store raw PDF bytes for export
+  const pdfBytesRef = useRef<Uint8Array | null>(null);
+
   // Scale calibration state
   const [scaleCalibration, setScaleCalibration] = useState<ScaleCalibration | null>(null);
   const [calibrationPoints, setCalibrationPoints] = useState<Point[]>([]);
@@ -45,9 +54,12 @@ export const usePdfHandler = () => {
     const fileReader = new FileReader();
     fileReader.onload = async function() {
       const typedarray = new Uint8Array(this.result as ArrayBuffer);
+      // Store a copy — pdfjsLib.getDocument transfers the ArrayBuffer, invalidating the original
+      pdfBytesRef.current = new Uint8Array(typedarray);
       const loadedPdf = await pdfjsLib.getDocument(typedarray).promise;
       setPdf(loadedPdf);
       setMeasurements({});
+      setTextAnnotations({});
       setCurrentPage(1);
     };
     fileReader.readAsArrayBuffer(file);
@@ -98,6 +110,54 @@ export const usePdfHandler = () => {
     area = Math.abs(area) / 2;
     return ((area / Math.pow(pixelsPerUnit, 2))).toFixed(2);
   }, [pixelsPerUnit]);
+
+  // --- Text Annotation Methods ---
+
+  const addTextAnnotation = useCallback((page: number, x: number, y: number) => {
+    const id = `text-${Date.now()}`;
+    const annotation: TextAnnotation = {
+      id,
+      x,
+      y,
+      text: '',
+      fontSize: 16,
+      color: '#FF0000',
+    };
+    setTextAnnotations(prev => ({
+      ...prev,
+      [page]: [...(prev[page] || []), annotation]
+    }));
+    setEditingTextId(id);
+    return id;
+  }, []);
+
+  const updateTextAnnotation = useCallback((id: string, updates: Partial<TextAnnotation>) => {
+    setTextAnnotations(prev => {
+      const newAnnotations = { ...prev };
+      for (const page of Object.keys(newAnnotations)) {
+        const pageNum = Number(page);
+        const idx = newAnnotations[pageNum].findIndex(a => a.id === id);
+        if (idx !== -1) {
+          newAnnotations[pageNum] = [...newAnnotations[pageNum]];
+          newAnnotations[pageNum][idx] = { ...newAnnotations[pageNum][idx], ...updates };
+          break;
+        }
+      }
+      return newAnnotations;
+    });
+  }, []);
+
+  const deleteTextAnnotation = useCallback((id: string) => {
+    setTextAnnotations(prev => {
+      const newAnnotations = { ...prev };
+      for (const page of Object.keys(newAnnotations)) {
+        const pageNum = Number(page);
+        newAnnotations[pageNum] = newAnnotations[pageNum].filter(a => a.id !== id);
+      }
+      return newAnnotations;
+    });
+    if (editingTextId === id) setEditingTextId(null);
+  }, [editingTextId]);
 
   // --- Scale Calibration Methods ---
 
@@ -333,10 +393,48 @@ export const usePdfHandler = () => {
         : calibrationPoints;
       drawCalibrationLine(context, previewPoints, true);
     }
+
+    // Draw text annotations
+    const pageTexts = textAnnotations[currentPage] || [];
+    pageTexts.forEach(ann => {
+      if (ann.id === editingTextId) return; // skip – rendered as HTML input
+      if (!ann.text) return;
+      context.save();
+      context.font = `bold ${ann.fontSize}px Arial`;
+      context.fillStyle = ann.color;
+      context.textBaseline = 'top';
+
+      // Background for readability
+      const metrics = context.measureText(ann.text);
+      const padding = 4;
+      context.fillStyle = 'rgba(255,255,255,0.85)';
+      context.fillRect(
+        ann.x - padding,
+        ann.y - padding,
+        metrics.width + padding * 2,
+        ann.fontSize + padding * 2
+      );
+
+      // Border
+      context.strokeStyle = ann.color;
+      context.lineWidth = 1;
+      context.strokeRect(
+        ann.x - padding,
+        ann.y - padding,
+        metrics.width + padding * 2,
+        ann.fontSize + padding * 2
+      );
+
+      // Text
+      context.fillStyle = ann.color;
+      context.fillText(ann.text, ann.x, ann.y);
+      context.restore();
+    });
   }, [
     measurements, currentPage, currentMeasurement, tool, canvasSize,
     drawMeasurement, drawCalibrationLine, scaleCalibration,
-    isSettingScale, calibrationPoints, calibrationPreviewPoint
+    isSettingScale, calibrationPoints, calibrationPreviewPoint,
+    textAnnotations, editingTextId
   ]);
 
   useEffect(() => {
@@ -383,7 +481,7 @@ export const usePdfHandler = () => {
     calculateDistance,
     calculateArea,
     renderAnnotations,
-    // New calibration exports
+    // Calibration exports
     scaleCalibration,
     setScaleCalibration,
     calibrationPoints,
@@ -395,5 +493,14 @@ export const usePdfHandler = () => {
     resetScale,
     startCalibration,
     cancelCalibration,
+    // Text annotation exports
+    textAnnotations,
+    setTextAnnotations,
+    editingTextId,
+    setEditingTextId,
+    addTextAnnotation,
+    updateTextAnnotation,
+    deleteTextAnnotation,
+    pdfBytesRef,
   };
 };

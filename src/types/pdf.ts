@@ -14,9 +14,22 @@ export type PageMeasurements = {
   [pageNumber: number]: Measurement[];
 };
 
+export type TextAnnotation = {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  fontSize: number;
+  color: string;
+};
+
+export type PageTextAnnotations = {
+  [pageNumber: number]: TextAnnotation[];
+};
+
 export type MeasurementUnit = 'ft' | 'm' | 'in' | 'cm' | 'mm' | 'yd';
 
-export type Tool = 'measure' | 'area' | 'calibrate' | 'pan';
+export type Tool = 'measure' | 'area' | 'calibrate' | 'pan' | 'text';
 
 export type ScaleCalibration = {
   points: [Point, Point] | null;

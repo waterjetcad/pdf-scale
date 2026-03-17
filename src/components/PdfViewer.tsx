@@ -1,14 +1,26 @@
-import { ChangeEvent, MouseEvent, PointerEvent, WheelEvent, useState, useRef, useEffect } from 'react';
+import { ChangeEvent, MouseEvent, PointerEvent, WheelEvent, useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ScaleCalibrationPanel } from '@/components/ScaleCalibrationPanel';
 import { usePdfHandler } from '@/hooks/usePdfHandler';
+import { useExportPdf } from '@/hooks/useExportPdf';
 import { Point } from '@/types/pdf';
 import {
   Ruler, Move, ZoomIn, ZoomOut, RotateCcw, Hand,
   Upload, ChevronLeft, ChevronRight, FileText,
-  Crosshair, Trash2, X, LayoutGrid, Undo2, Check, Home
+  Crosshair, Trash2, X, LayoutGrid, Undo2, Check, Home,
+  Type, Download, Palette
 } from 'lucide-react';
+
+const TEXT_COLORS = [
+  { label: 'Red', value: '#EF4444' },
+  { label: 'Blue', value: '#3B82F6' },
+  { label: 'Green', value: '#22C55E' },
+  { label: 'Orange', value: '#F97316' },
+  { label: 'Purple', value: '#A855F7' },
+  { label: 'Black', value: '#1E293B' },
+  { label: 'White', value: '#FFFFFF' },
+];
 
 export function PdfViewer() {
   const {
@@ -45,26 +57,46 @@ export function PdfViewer() {
     resetScale,
     startCalibration,
     cancelCalibration,
+    // Text annotations
+    textAnnotations,
+    editingTextId,
+    setEditingTextId,
+    addTextAnnotation,
+    updateTextAnnotation,
+    deleteTextAnnotation,
+    pdfBytesRef,
   } = usePdfHandler();
 
-  // Pan and Zoom — use refs for real-time transform to avoid React re-render jank
+  const { exportPdf } = useExportPdf();
+
+  // Pan and Zoom
   const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [zoomDisplay, setZoomDisplay] = useState(100); // display-only zoom %
+  const [zoomDisplay, setZoomDisplay] = useState(100);
   const lastMousePos = useRef<Point | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
 
-  // Refs that hold the "live" transform values — written synchronously, no re-render
+  // Text style state
+  const [textColor, setTextColor] = useState('#EF4444');
+  const [textFontSize, setTextFontSize] = useState(16);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
+  // Export modal state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedExportPages, setSelectedExportPages] = useState<Set<number>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Refs for real-time transform
   const scaleRef = useRef(1);
   const panRef = useRef<Point>({ x: 0, y: 0 });
   const rafId = useRef<number>(0);
   const isAnimating = useRef(false);
 
-  /** Push the current ref values into the DOM in one rAF pass */
   const applyTransform = () => {
     if (!wrapperRef.current) return;
     const s = scaleRef.current;
@@ -81,10 +113,10 @@ export function PdfViewer() {
     });
   };
 
-  // Handle Spacebar for temporary pan mode
+  // Spacebar for pan
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === 'Space' && !e.repeat) {
         e.preventDefault();
         setIsSpacePressed(true);
@@ -107,7 +139,6 @@ export function PdfViewer() {
     };
   }, []);
 
-  // Keep React state in sync for things that need it (annotation canvas, clamp checks)
   useEffect(() => {
     scaleRef.current = scale;
   }, [scale]);
@@ -116,6 +147,18 @@ export function PdfViewer() {
     panRef.current = panOffset;
     applyTransform();
   }, [panOffset]);
+
+  // Focus text input when editing — use rAF delay so pointer events settle first
+  useEffect(() => {
+    if (editingTextId && textInputRef.current) {
+      const el = textInputRef.current;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.focus();
+        });
+      });
+    }
+  }, [editingTextId]);
 
   const handleUndo = () => {
     if (tool === 'calibrate' && isSettingScale) {
@@ -144,6 +187,8 @@ export function PdfViewer() {
   const activeTool = isSpacePressed ? 'pan' : tool;
   const cursorStyle = activeTool === 'pan'
     ? (isDragging ? 'grabbing' : 'grab')
+    : activeTool === 'text'
+    ? 'text'
     : 'crosshair';
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -159,6 +204,7 @@ export function PdfViewer() {
   const getCanvasPoint = (e: MouseEvent<HTMLDivElement> | PointerEvent<HTMLDivElement>): Point | null => {
     if (!annotationCanvasRef.current) return null;
     const rect = annotationCanvasRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
     const scaleX = annotationCanvasRef.current.width / rect.width;
     const scaleY = annotationCanvasRef.current.height / rect.height;
     return {
@@ -166,6 +212,54 @@ export function PdfViewer() {
       y: (e.clientY - rect.top) * scaleY,
     };
   };
+
+  // ------ Text annotation editing helpers ------
+
+  const getEditingAnnotation = () => {
+    if (!editingTextId) return null;
+    const pageAnns = textAnnotations[currentPage] || [];
+    return pageAnns.find(a => a.id === editingTextId) || null;
+  };
+
+  const commitTextEdit = useCallback(() => {
+    if (!editingTextId) return;
+    const ann = (textAnnotations[currentPage] || []).find(a => a.id === editingTextId);
+    if (ann && !ann.text.trim()) {
+      // Delete empty annotations when user explicitly commits
+      deleteTextAnnotation(editingTextId);
+    }
+    setEditingTextId(null);
+  }, [editingTextId, textAnnotations, currentPage, deleteTextAnnotation, setEditingTextId]);
+
+  // Separate blur handler that does NOT delete empty annotations
+  // (so the input doesn't vanish on accidental blur)
+  const handleTextInputBlur = useCallback(() => {
+    // Use a timeout so that if user is clicking back on the input
+    // or on another part of the canvas, we don't prematurely commit
+    setTimeout(() => {
+      // Only commit if we're still in editing mode and the ref isn't focused
+      if (editingTextId && textInputRef.current && document.activeElement !== textInputRef.current) {
+        const ann = (textAnnotations[currentPage] || []).find(a => a.id === editingTextId);
+        if (ann && !ann.text.trim()) {
+          deleteTextAnnotation(editingTextId);
+        }
+        setEditingTextId(null);
+      }
+    }, 200);
+  }, [editingTextId, textAnnotations, currentPage, deleteTextAnnotation, setEditingTextId]);
+
+  const handleTextInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitTextEdit();
+    } else if (e.key === 'Escape') {
+      // Delete if empty, otherwise just stop editing
+      commitTextEdit();
+    }
+    e.stopPropagation();
+  };
+
+  // ------ Pointer handlers ------
 
   const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (activeTool === 'pan') {
@@ -177,6 +271,43 @@ export function PdfViewer() {
 
     const point = getCanvasPoint(e);
     if (!point) return;
+
+    // Text tool
+    if (activeTool === 'text') {
+      if (!pdf) return; // Require a loaded PDF
+
+      // If currently editing, commit first
+      if (editingTextId) {
+        commitTextEdit();
+      }
+
+      // Check if clicking on an existing text annotation
+      const pageAnns = textAnnotations[currentPage] || [];
+      const clicked = pageAnns.find(ann => {
+        const canvasEl = annotationCanvasRef.current;
+        if (!canvasEl) return false;
+        const ctx = canvasEl.getContext('2d');
+        if (!ctx) return false;
+        ctx.font = `bold ${ann.fontSize}px Arial`;
+        const metrics = ctx.measureText(ann.text || 'Text');
+        const padding = 4;
+        return (
+          point.x >= ann.x - padding &&
+          point.x <= ann.x + metrics.width + padding &&
+          point.y >= ann.y - padding &&
+          point.y <= ann.y + ann.fontSize + padding
+        );
+      });
+
+      if (clicked) {
+        setEditingTextId(clicked.id);
+      } else {
+        const id = addTextAnnotation(currentPage, point.x, point.y);
+        // Apply the currently selected color and font size
+        updateTextAnnotation(id, { color: textColor, fontSize: textFontSize });
+      }
+      return;
+    }
 
     // Calibration mode
     if (isSettingScale && tool === 'calibrate') {
@@ -239,7 +370,6 @@ export function PdfViewer() {
     if (isDragging && activeTool === 'pan' && lastMousePos.current) {
       const dx = e.clientX - lastMousePos.current.x;
       const dy = e.clientY - lastMousePos.current.y;
-      // Update ref directly for instant feedback
       panRef.current = {
         x: panRef.current.x + dx,
         y: panRef.current.y + dy
@@ -249,7 +379,7 @@ export function PdfViewer() {
       return;
     }
 
-    if (activeTool === 'pan') return;
+    if (activeTool === 'pan' || activeTool === 'text') return;
 
     const point = getCanvasPoint(e);
     if (!point) return;
@@ -275,7 +405,6 @@ export function PdfViewer() {
       setIsDragging(false);
       try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
       lastMousePos.current = null;
-      // Sync React state with the ref so subsequent renders are correct
       setPanOffset({ ...panRef.current });
     }
   };
@@ -298,7 +427,6 @@ export function PdfViewer() {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Smoother zoom factor — use deltaY magnitude for proportional zoom
     const delta = -e.deltaY;
     const zoomIntensity = 0.0015;
     const factor = Math.exp(delta * zoomIntensity);
@@ -311,7 +439,6 @@ export function PdfViewer() {
       const distX = mouseX - panRef.current.x;
       const distY = mouseY - panRef.current.y;
 
-      // Update refs directly — no React re-render needed
       scaleRef.current = newScale;
       panRef.current = {
         x: mouseX - distX * ratio,
@@ -319,8 +446,6 @@ export function PdfViewer() {
       };
 
       scheduleTransform();
-
-      // Debounce the React state sync so the zoom % label updates smoothly
       setZoomDisplay(Math.round(newScale * 100));
       setScale(newScale);
       setPanOffset({ ...panRef.current });
@@ -383,6 +508,53 @@ export function PdfViewer() {
     }));
   };
 
+  // ------ Export handlers ------
+
+  const openExportModal = () => {
+    if (!pdf) return;
+    const all = new Set<number>();
+    for (let i = 1; i <= pdf.numPages; i++) all.add(i);
+    setSelectedExportPages(all);
+    setShowExportModal(true);
+  };
+
+  const toggleExportPage = (page: number) => {
+    setSelectedExportPages(prev => {
+      const next = new Set(prev);
+      if (next.has(page)) next.delete(page);
+      else next.add(page);
+      return next;
+    });
+  };
+
+  const toggleAllExportPages = () => {
+    if (!pdf) return;
+    if (selectedExportPages.size === pdf.numPages) {
+      setSelectedExportPages(new Set());
+    } else {
+      const all = new Set<number>();
+      for (let i = 1; i <= pdf.numPages; i++) all.add(i);
+      setSelectedExportPages(all);
+    }
+  };
+
+  const handleExport = async () => {
+    if (!pdfBytesRef.current || selectedExportPages.size === 0) return;
+    setIsExporting(true);
+    try {
+      const pages = Array.from(selectedExportPages).sort((a, b) => a - b);
+      const exportName = fileName ? fileName.replace('.pdf', '-annotated.pdf') : 'export.pdf';
+      await exportPdf(pdfBytesRef.current, textAnnotations, pages, exportName);
+    } catch (err) {
+      console.error('Export failed:', err);
+    } finally {
+      setIsExporting(false);
+      setShowExportModal(false);
+    }
+  };
+
+  // ------ Display data ------
+
   const pageMeasurements = measurements[currentPage] || [];
   const displayMeasurements = [...pageMeasurements];
   
@@ -398,6 +570,34 @@ export function PdfViewer() {
 
   const linearMeasurements = displayMeasurements.filter(m => m.type === 'linear' && m.id !== 'preview-area');
   const linearTotal = linearMeasurements.reduce((sum, m) => sum + m.value, 0);
+
+  const pageTextAnns = textAnnotations[currentPage] || [];
+
+  // Compute editing annotation screen position.
+  // We compute the screen position from the canvas bounding rect 
+  // so the input is rendered as a fixed-position overlay on the viewport.
+  const editingAnn = getEditingAnnotation();
+  let editingStyle: React.CSSProperties | null = null;
+  if (editingAnn && annotationCanvasRef.current && annotationCanvasRef.current.width > 0) {
+    const canvasRect = annotationCanvasRef.current.getBoundingClientRect();
+    const viewportRect = containerRef.current?.getBoundingClientRect();
+    if (canvasRect.width > 0 && viewportRect) {
+      // Map canvas pixel coords to screen CSS coords
+      const cssScaleX = canvasRect.width / annotationCanvasRef.current.width;
+      const cssScaleY = canvasRect.height / annotationCanvasRef.current.height;
+      const screenX = canvasRect.left - viewportRect.left + editingAnn.x * cssScaleX;
+      const screenY = canvasRect.top - viewportRect.top + editingAnn.y * cssScaleY;
+      const screenFontSize = Math.max(10, editingAnn.fontSize * cssScaleY);
+      editingStyle = {
+        position: 'absolute' as const,
+        left: screenX,
+        top: screenY,
+        fontSize: screenFontSize,
+        color: editingAnn.color,
+        zIndex: 100,
+      };
+    }
+  }
 
   return (
     <div className="pdf-viewer-layout">
@@ -443,7 +643,6 @@ export function PdfViewer() {
                       className="measurement-delete-btn"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Finish shape
                         const newMeasurement = {
                           id: Date.now().toString(),
                           type: 'area' as const,
@@ -481,7 +680,7 @@ export function PdfViewer() {
               </div>
             )})}
 
-            {displayMeasurements.length === 0 && pixelsPerUnit && (
+            {displayMeasurements.length === 0 && pixelsPerUnit && pageTextAnns.length === 0 && (
               <div className="measurements-empty-state">
                 <div className="measurements-empty-icon">
                   <LayoutGrid className="w-5 h-5" />
@@ -499,6 +698,48 @@ export function PdfViewer() {
               <div className="measurement-total-label">Total Distance</div>
               <div className="measurement-total-value">
                 {linearTotal.toFixed(2)} {measurementUnit}
+              </div>
+            </div>
+          )}
+
+          {/* Text Annotations List */}
+          {pageTextAnns.length > 0 && (
+            <div className="text-annotations-section">
+              <div className="text-annotations-header">
+                <Type className="w-3.5 h-3.5" />
+                <span>Text Annotations</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {pageTextAnns.map((ann, i) => (
+                  <div
+                    key={ann.id}
+                    className={`measurement-card text-annotation-card ${editingTextId === ann.id ? 'text-annotation-card-editing' : ''}`}
+                    onClick={() => {
+                      setTool('text');
+                      setEditingTextId(ann.id);
+                    }}
+                  >
+                    <div className="measurement-card-header">
+                      <span className="measurement-card-label">
+                        <div className="text-annotation-dot" />
+                        Text {i + 1}
+                      </span>
+                      <button
+                        className="measurement-delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteTextAnnotation(ann.id);
+                        }}
+                        title="Delete annotation"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="text-annotation-preview">
+                      {ann.text || '(empty)'}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -570,6 +811,7 @@ export function PdfViewer() {
             <Button
               onClick={() => {
                 if (isSettingScale) cancelCalibration();
+                commitTextEdit();
                 setTool('pan');
               }}
               variant="outline"
@@ -582,6 +824,7 @@ export function PdfViewer() {
             <Button
               onClick={() => {
                 if (isSettingScale) cancelCalibration();
+                commitTextEdit();
                 setTool('measure');
               }}
               variant="outline"
@@ -595,6 +838,7 @@ export function PdfViewer() {
             <Button
               onClick={() => {
                 if (isSettingScale) cancelCalibration();
+                commitTextEdit();
                 setTool('area');
               }}
               variant="outline"
@@ -605,6 +849,79 @@ export function PdfViewer() {
             >
               <Move className="w-4 h-4" />
             </Button>
+            <Button
+              onClick={() => {
+                if (isSettingScale) cancelCalibration();
+                setTool('text');
+              }}
+              variant="outline"
+              size="sm"
+              title="Add text annotation"
+              className={`tool-btn ${tool === 'text' && !isSettingScale ? 'tool-btn-active' : ''}`}
+            >
+              <Type className="w-4 h-4" />
+            </Button>
+            {/* Color picker for text tool */}
+            {tool === 'text' && (
+              <div className="color-picker-wrapper">
+                <button
+                  className="color-picker-trigger"
+                  onClick={() => setShowColorPicker(!showColorPicker)}
+                  title="Text color"
+                >
+                  <div className="color-picker-swatch" style={{ background: textColor }} />
+                  <Palette className="w-3.5 h-3.5" />
+                </button>
+                {showColorPicker && (
+                  <div className="color-picker-dropdown">
+                    <div className="color-picker-label">Text Color</div>
+                    <div className="color-picker-grid">
+                      {TEXT_COLORS.map(c => (
+                        <button
+                          key={c.value}
+                          className={`color-picker-option ${textColor === c.value ? 'color-picker-option-active' : ''}`}
+                          style={{ background: c.value }}
+                          onClick={() => {
+                            setTextColor(c.value);
+                            setShowColorPicker(false);
+                          }}
+                          title={c.label}
+                        />
+                      ))}
+                    </div>
+                    <div className="color-picker-custom">
+                      <label className="color-picker-custom-label">Custom:</label>
+                      <input
+                        type="color"
+                        value={textColor}
+                        onChange={(e) => {
+                          setTextColor(e.target.value);
+                        }}
+                        className="color-picker-input"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Font size selector for text tool */}
+            {tool === 'text' && (
+              <div className="text-size-wrapper">
+                <input
+                  type="number"
+                  className="text-size-input"
+                  value={textFontSize}
+                  onChange={(e) => {
+                    const v = Math.max(1, Math.min(999, Number(e.target.value) || 16));
+                    setTextFontSize(v);
+                  }}
+                  min={1}
+                  max={999}
+                  title="Text size (px)"
+                />
+                <span className="text-size-unit">px</span>
+              </div>
+            )}
             <div className="toolbar-divider" />
             <Button
               onClick={handleUndo}
@@ -636,6 +953,23 @@ export function PdfViewer() {
             </div>
           </div>
 
+          {/* Export */}
+          {pdf && (
+            <>
+              <div className="toolbar-divider" />
+              <div className="toolbar-section">
+                <button
+                  onClick={openExportModal}
+                  className="export-btn"
+                  title="Export PDF"
+                >
+                  <Download className="w-4 h-4" />
+                  Export
+                </button>
+              </div>
+            </>
+          )}
+
           {pageMeasurements.length > 0 && (
             <>
               <div className="toolbar-divider" />
@@ -665,6 +999,7 @@ export function PdfViewer() {
               <div className="page-nav">
                 <button
                   onClick={() => {
+                    commitTextEdit();
                     setCurrentPage(Math.max(1, currentPage - 1));
                     setPanOffset({ x: 0, y: 0 });
                   }}
@@ -679,6 +1014,7 @@ export function PdfViewer() {
                 </span>
                 <button
                   onClick={() => {
+                    commitTextEdit();
                     setCurrentPage(Math.min(pdf.numPages, currentPage + 1));
                     setPanOffset({ x: 0, y: 0 });
                   }}
@@ -730,6 +1066,24 @@ export function PdfViewer() {
               className="pdf-annotation-canvas"
             />
           </div>
+
+          {/* Floating text input for editing — rendered in the viewport, not inside the transformed wrapper */}
+          {editingAnn && editingStyle && (
+            <input
+              ref={textInputRef}
+              type="text"
+              className="text-annotation-input"
+              style={editingStyle}
+              value={editingAnn.text}
+              onChange={(e) => updateTextAnnotation(editingAnn.id, { text: e.target.value })}
+              onKeyDown={handleTextInputKeyDown}
+              onBlur={handleTextInputBlur}
+              placeholder="Type here..."
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            />
+          )}
         </div>
       </div>
 
@@ -742,6 +1096,82 @@ export function PdfViewer() {
           {calibrationPoints.length === 0 && "Click the first endpoint of a known dimension"}
           {calibrationPoints.length === 1 && "Now click the second endpoint"}
           {calibrationPoints.length === 2 && "Enter the real-world distance above and confirm"}
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && pdf && (
+        <div className="export-overlay" onClick={() => setShowExportModal(false)}>
+          <div className="export-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="export-modal-header">
+              <h3>
+                <Download className="w-5 h-5" />
+                Export PDF
+              </h3>
+              <button className="export-modal-close" onClick={() => setShowExportModal(false)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="export-modal-body">
+              <p className="export-modal-subtitle">
+                Select which pages to include in the exported PDF. Text annotations will be embedded.
+              </p>
+
+              <div className="export-select-all">
+                <label className="export-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={selectedExportPages.size === pdf.numPages}
+                    onChange={toggleAllExportPages}
+                    className="export-checkbox"
+                  />
+                  <span>Select All ({pdf.numPages} pages)</span>
+                </label>
+              </div>
+
+              <div className="export-page-grid">
+                {Array.from({ length: pdf.numPages }, (_, i) => i + 1).map(page => {
+                  const hasText = (textAnnotations[page] || []).length > 0;
+                  const hasMeasurements = (measurements[page] || []).length > 0;
+                  return (
+                    <label
+                      key={page}
+                      className={`export-page-card ${selectedExportPages.has(page) ? 'export-page-card-selected' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedExportPages.has(page)}
+                        onChange={() => toggleExportPage(page)}
+                        className="export-checkbox"
+                      />
+                      <div className="export-page-info">
+                        <span className="export-page-number">Page {page}</span>
+                        <div className="export-page-badges">
+                          {hasText && <span className="export-badge export-badge-text">Text</span>}
+                          {hasMeasurements && <span className="export-badge export-badge-measure">Measures</span>}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="export-modal-footer">
+              <button className="export-cancel-btn" onClick={() => setShowExportModal(false)}>
+                Cancel
+              </button>
+              <button
+                className="export-confirm-btn"
+                onClick={handleExport}
+                disabled={selectedExportPages.size === 0 || isExporting}
+              >
+                <Download className="w-4 h-4" />
+                {isExporting ? 'Exporting...' : `Export ${selectedExportPages.size} Page${selectedExportPages.size !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
