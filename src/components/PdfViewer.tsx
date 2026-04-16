@@ -9,7 +9,7 @@ import {
   Ruler, Move, ZoomIn, ZoomOut, RotateCcw, Hand,
   Upload, ChevronLeft, ChevronRight, FileText,
   Crosshair, Trash2, X, LayoutGrid, Undo2, Check, Home,
-  Type, Download, Palette
+  Type, Download, Palette, Receipt
 } from 'lucide-react';
 
 const TEXT_COLORS = [
@@ -750,6 +750,7 @@ export function PdfViewer() {
       <div className="pdf-viewer-main">
         {/* Toolbar */}
         <div className="pdf-toolbar">
+         <div className="pdf-toolbar-inner">
           {/* Nav */}
           <div className="toolbar-section">
             <Link 
@@ -953,7 +954,7 @@ export function PdfViewer() {
             </div>
           </div>
 
-          {/* Export */}
+          {/* Export & Quote */}
           {pdf && (
             <>
               <div className="toolbar-divider" />
@@ -965,6 +966,22 @@ export function PdfViewer() {
                 >
                   <Download className="w-4 h-4" />
                   Export
+                </button>
+                <button
+                  onClick={() => {
+                    const quoteData = {
+                      measurements,
+                      measurementUnit,
+                      fileName: fileName,
+                    };
+                    localStorage.setItem('easyarch_quote_data', JSON.stringify(quoteData));
+                    window.open('/quotes', '_blank');
+                  }}
+                  className="quote-toolbar-btn"
+                  title="Create a quote from measurements"
+                >
+                  <Receipt className="w-4 h-4" />
+                  Create Quote
                 </button>
               </div>
             </>
@@ -1027,6 +1044,7 @@ export function PdfViewer() {
               </div>
             </div>
           )}
+        </div>
         </div>
 
         {/* Canvas Area */}

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Ruler, FileText, MousePointer2, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Ruler, FileText, MousePointer2, CheckCircle2, ArrowRight, Receipt } from 'lucide-react';
 
 export default function LandingPage() {
   return (
@@ -12,12 +12,21 @@ export default function LandingPage() {
             <Ruler className="w-5 h-5" />
             Easy Architech
           </div>
-          <Link 
-            href="/workspace"
-            className="text-sm font-medium text-slate-300 hover:text-white transition-colors"
-          >
-            Open Workspace
-          </Link>
+          <div className="flex items-center gap-6">
+            <Link 
+              href="/quotes"
+              className="text-sm font-medium text-slate-400 hover:text-amber-400 transition-colors flex items-center gap-1.5"
+            >
+              <Receipt className="w-3.5 h-3.5" />
+              Quotes
+            </Link>
+            <Link 
+              href="/workspace"
+              className="text-sm font-medium text-slate-300 hover:text-white transition-colors"
+            >
+              Open Workspace
+            </Link>
+          </div>
         </div>
       </header>
 
