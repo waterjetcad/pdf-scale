@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Ruler, FileText, Printer, Plus, Trash2, ArrowLeft,
   DollarSign, Hash, Building2, User, Calendar, MapPin,
-  Phone, Mail, ClipboardList, Receipt, ImagePlus, X
+  Phone, Mail, ClipboardList, ImagePlus, X
 } from 'lucide-react';
 
 // ── Types ──
@@ -289,6 +289,7 @@ export function QuotesPage() {
             {/* Logo Area */}
             {logoUrl ? (
               <div className="quote-logo-container">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={logoUrl} alt="Company Logo" className="quote-logo-img" />
                 <button
                   className="quote-logo-remove no-print"
