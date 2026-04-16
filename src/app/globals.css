@@ -336,32 +336,15 @@ body {
 .pdf-toolbar-inner {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  flex-wrap: nowrap;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0,0,0,0.15) transparent;
-}
-
-.pdf-toolbar-inner::-webkit-scrollbar {
-  height: 3px;
-}
-
-.pdf-toolbar-inner::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.pdf-toolbar-inner::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.12);
-  border-radius: 10px;
+  gap: 5px;
+  padding: 6px 10px;
+  flex-wrap: wrap;
 }
 
 .toolbar-section {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   flex-shrink: 0;
 }
 
@@ -379,7 +362,7 @@ body {
   width: 1px;
   height: 24px;
   background: #e2e8f0;
-  margin: 0 6px;
+  margin: 0 4px;
   flex-shrink: 0;
 }
 
@@ -387,8 +370,8 @@ body {
 .upload-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
+  gap: 6px;
+  padding: 6px 12px;
   background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
   border: none;
@@ -422,7 +405,7 @@ body {
   font-size: 12px;
   font-weight: 500;
   color: #3b82f6;
-  max-width: 180px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1157,13 +1140,13 @@ body {
 .export-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
+  gap: 5px;
+  padding: 6px 12px;
   background: linear-gradient(135deg, #10b981, #059669);
   color: white;
   border: none;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -2189,13 +2172,13 @@ body {
 .quote-toolbar-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
+  gap: 5px;
+  padding: 6px 12px;
   background: linear-gradient(135deg, #f59e0b, #d97706);
   color: white;
   border: none;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
